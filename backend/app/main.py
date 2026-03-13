@@ -10,22 +10,16 @@ import logging
 from datetime import datetime
 from dotenv import load_dotenv
 
-# Triggering reload
-import pncp_utils
+# Internal imports
+from app.db.models import WorkflowItemCreate, WorkflowItemUpdate, WorkflowItemResponse, IngestAction, WorkflowStatus, PNCPBatch, PaginatedResponse, PaginatedRuns
+from app.utils import workflow_utils, idempotency_utils
+from app.services.pncp import utils as pncp_utils
+from app.core import middleware
+from app.api import deps as auth_deps
+from app.api.router import api_router
 
 logger = logging.getLogger(__name__)
 load_dotenv(override=True)
-
-load_dotenv(override=True)
-
-# Auth imports
-from models import WorkflowItemCreate, WorkflowItemUpdate, WorkflowItemResponse, IngestAction, WorkflowStatus, PNCPBatch, PaginatedResponse, PaginatedRuns
-import workflow_utils
-import idempotency_utils
-import pncp_utils
-import middleware
-import auth_router
-import auth_deps
 
 # Admin Configuration
 # These are loaded at module level but will be checked dynamically in dependencies
@@ -57,13 +51,7 @@ app.add_middleware(
     expose_headers=["*"]
 )
 
-from routers import admin_orgs_router
-from routers import org_members_router
-from routers import admin_users_router
-app.include_router(auth_router.router, prefix='/api/auth', tags=['Auth'])
-app.include_router(admin_orgs_router.router, prefix='/api/admin/orgs', tags=['Admin Orgs'])
-app.include_router(org_members_router.router, prefix='/api/orgs/{org_id}/members', tags=['Org Members'])
-app.include_router(admin_users_router.router, prefix='/api/admin/users', tags=['Admin Users'])
+app.include_router(api_router, prefix='/api')
 
 from fastapi import Response, Request
 
@@ -88,8 +76,8 @@ async def startup_event():
         raise RuntimeError("ADMIN_API_KEY not configured. Application cannot start.")
 
     # 1. Ensure service user + personal workspace in PostgreSQL
-    from database import get_job_conn
-    from auth_security import hash_password
+    from app.db.session import get_job_conn
+    from app.core.security import hash_password
     import uuid
     from datetime import datetime
     
@@ -304,7 +292,7 @@ async def admin_backfill_arquivos(
     import json
     import time
     from datetime import datetime
-    from pncp_client import PNCPClient
+    from app.services.pncp.client import PNCPClient
 
     start_time_total = time.time()
 
@@ -1418,7 +1406,7 @@ async def job_pncp_ingest(
     """
     Trigger 2-phase PNCP ingestion job.
     """
-    from pncp_ingest_job import PNCPIngestJob
+    from app.jobs.pncp_ingest import PNCPIngestJob
     from datetime import datetime
     
     # Default to today if not provided
@@ -1453,7 +1441,7 @@ async def job_pncp_reclassify(
     """
     Manually trigger re-classification of all biddings using v3 logic.
     """
-    from segment_classifier import finalize_contract_segment
+    from app.services.segmentation.classifier import finalize_contract_segment
     import pncp_utils
     from datetime import datetime
     
@@ -1886,7 +1874,7 @@ async def backfill_valores(limit: int = 500, dry_run: bool = False):
     """
     import sqlite3
     import time
-    from pncp_utils import normalize_valor_estimado_centavos
+    from app.services.pncp.utils import normalize_valor_estimado_centavos
     
     start_time = time.time()
     conn = sqlite3.connect('pncp.db')
@@ -1958,8 +1946,8 @@ async def admin_backfill_itens_from_payload(
     """
     Hypothesis Test: Try to extract items from already stored payloads (DET/PUB).
     """
-    from enrichment_utils import extract_items_from_payload, persist_items
-    from database import get_db_connection
+    from app.services.enrichment.utils import extract_items_from_payload, persist_items
+    from app.db.session import get_db_connection
     import time
     import sqlite3
     
@@ -2034,7 +2022,7 @@ async def admin_drain_backlog(
     drain functions, then returns metrics. Call repeatedly to empty backlog.
     Does NOT block indefinitely — safe against HTTP proxy timeouts.
     """
-    from enrichment_utils import run_itens_backfill, run_arquivos_backfill
+    from app.services.enrichment.utils import run_itens_backfill, run_arquivos_backfill
     import time as _time
 
     start_wall = _time.time()
@@ -2120,7 +2108,7 @@ def _is_reclassify_job_running(conn) -> bool:
 @app.get("/api/segments")
 async def get_segments(ws_context: dict = Depends(auth_deps.require_workspace_access)):
     """List all segments and their terms, ordered by priority."""
-    from database import get_db_connection
+    from app.db.session import get_db_connection
     ws_id = ws_context["workspace_id"]
     conn = get_db_connection()
     c = conn.cursor()
@@ -2139,7 +2127,7 @@ async def get_segments(ws_context: dict = Depends(auth_deps.require_workspace_ac
 async def create_segment(payload: dict, ws_context: dict = Depends(auth_deps.require_workspace_access)):
     """Create a new segment."""
     try:
-        from database import get_db_connection
+        from app.db.session import get_db_connection
         ws_id = ws_context["workspace_id"]
         conn = get_db_connection()
         if _is_reclassify_job_running(conn):
@@ -2164,7 +2152,7 @@ async def create_segment(payload: dict, ws_context: dict = Depends(auth_deps.req
 @app.patch("/api/segments/{segment_id}")
 async def update_segment(segment_id: str, payload: dict, ws_context: dict = Depends(auth_deps.require_workspace_access)):
     """Update a segment's properties."""
-    from database import get_db_connection
+    from app.db.session import get_db_connection
     ws_id = ws_context["workspace_id"]
     conn = get_db_connection()
     if _is_reclassify_job_running(conn):
@@ -2210,7 +2198,7 @@ async def update_segment(segment_id: str, payload: dict, ws_context: dict = Depe
 @app.delete("/api/segments/{segment_id}")
 async def delete_segment(segment_id: str, ws_context: dict = Depends(auth_deps.require_workspace_access)):
     """Delete a segment and its terms (cascade)."""
-    from database import get_db_connection
+    from app.db.session import get_db_connection
     ws_id = ws_context["workspace_id"]
     conn = get_db_connection()
     if _is_reclassify_job_running(conn):
@@ -2229,7 +2217,7 @@ async def delete_segment(segment_id: str, ws_context: dict = Depends(auth_deps.r
 
 @app.post("/api/segments/{segment_id}/terms")
 async def add_segment_term(segment_id: str, payload: dict, ws_context: dict = Depends(auth_deps.require_workspace_access)):
-    from database import get_db_connection
+    from app.db.session import get_db_connection
     ws_id = ws_context["workspace_id"]
     conn = get_db_connection()
     if _is_reclassify_job_running(conn):
@@ -2249,7 +2237,7 @@ async def add_segment_term(segment_id: str, payload: dict, ws_context: dict = De
 
 @app.delete("/api/segments/{segment_id}/terms/{term_id}")
 async def delete_segment_term(segment_id: str, term_id: str, ws_context: dict = Depends(auth_deps.require_workspace_access)):
-    from database import get_db_connection
+    from app.db.session import get_db_connection
     ws_id = ws_context["workspace_id"]
     conn = get_db_connection()
     if _is_reclassify_job_running(conn):
@@ -2270,8 +2258,8 @@ async def delete_segment_term(segment_id: str, term_id: str, ws_context: dict = 
 # Background Worker Function
 def run_reclassify_job_worker(job_id: str, frozen_rules: list, ws_id: str):
     import time
-    from database import get_db_connection
-    from segment_classifier import DeterministicClassifier, finalize_contract_segment_frozen
+    from app.db.session import get_db_connection
+    from app.services.segmentation.classifier import DeterministicClassifier, finalize_contract_segment_frozen
     
     classifier = DeterministicClassifier(frozen_rules)
     conn = get_db_connection()
@@ -2361,8 +2349,8 @@ def run_reclassify_job_worker(job_id: str, frozen_rules: list, ws_id: str):
 @app.post("/api/segments/reclassify")
 async def start_reclassify_job(background_tasks: BackgroundTasks, ws_context: dict = Depends(auth_deps.require_workspace_access)):
     """Start the asynchronous reclassification job if none is pending/running."""
-    from database import get_db_connection
-    from segment_classifier import fetch_frozen_rules
+    from app.db.session import get_db_connection
+    from app.services.segmentation.classifier import fetch_frozen_rules
     ws_id = ws_context["workspace_id"]
     conn = get_db_connection()
     c = conn.cursor()
@@ -2387,7 +2375,7 @@ async def start_reclassify_job(background_tasks: BackgroundTasks, ws_context: di
 @app.get("/api/jobs/{job_id}")
 async def get_job_status(job_id: str, ws_context: dict = Depends(auth_deps.require_workspace_access)):
     """Poll job status."""
-    from database import get_db_connection
+    from app.db.session import get_db_connection
     ws_id = ws_context["workspace_id"]
     conn = get_db_connection()
     c = conn.cursor()

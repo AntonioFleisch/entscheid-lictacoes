@@ -7,11 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 
-from auth_security import hash_password, verify_password, validate_password_policy, create_access_token
-from auth_deps import get_db, get_current_user
+from app.core.security import hash_password, verify_password, validate_password_policy, create_access_token
+from app.api.deps import get_db, get_current_user
 import secrets
-from password_reset_service import create_reset_token, validate_reset_token, consume_reset_token
-from email_service import send_email
+from app.services.auth.password_reset import create_reset_token, validate_reset_token, consume_reset_token
+from app.services.email.service import send_email
 
 router = APIRouter()
 

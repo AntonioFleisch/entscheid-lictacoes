@@ -2,8 +2,8 @@
   "name": "hello-api-unified",
   "version": "1.0.0",
   "scripts": {
-    "start": "powershell -ExecutionPolicy Bypass -File ./START_AUTOMATION.ps1",
-    "backend": "python -m uvicorn main:app --host 0.0.0.0 --port 8000",
+    "start": "powershell -ExecutionPolicy Bypass -File ./scripts/START_AUTOMATION.ps1",
+    "backend": "cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000",
     "frontend": "cd frontend && npm run dev",
     "scheduler": "python execution/scheduler.py",
     "validate": "python execution/validate_config.py"

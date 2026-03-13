@@ -3,8 +3,8 @@ import hashlib
 import json
 import re
 from typing import Dict, Any, List, Optional
-from database import get_db_connection
-from pncp_client import PNCPClient
+from app.db.session import get_db_connection
+from app.services.pncp.client import PNCPClient
 
 logger = logging.getLogger(__name__)
 client = PNCPClient()

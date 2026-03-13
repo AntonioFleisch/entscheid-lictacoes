@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 
-from auth_deps import get_db, get_current_user
+from app.api.deps import get_db, get_current_user
 
 router = APIRouter()
 

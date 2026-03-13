@@ -1,4 +1,4 @@
-from database import get_db_connection
+from app.db.session import get_db_connection
 import logging
 import json
 import time
@@ -7,8 +7,8 @@ import requests
 import hashlib
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Tuple
-from segment_classifier import DeterministicClassifier, fetch_frozen_rules, finalize_contract_segment_frozen
-from pncp_utils import build_pncp_edital_url, normalize_valor_estimado_centavos
+from app.services.segmentation.classifier import DeterministicClassifier, fetch_frozen_rules, finalize_contract_segment_frozen
+from app.services.pncp.utils import build_pncp_edital_url, normalize_valor_estimado_centavos
 
 # Logger Configuration
 logger = logging.getLogger("pncp_ingest_job")
@@ -764,7 +764,7 @@ class PNCPIngestJob:
     def run_items_archives_enrichment(self) -> Dict[str, Any]:
         """Phase C: Automated collection of items and archives (Backlog Drain)."""
         import os
-        from enrichment_utils import run_itens_backfill, run_arquivos_backfill
+        from app.services.enrichment.utils import run_itens_backfill, run_arquivos_backfill
 
         enrich_drain_enabled = os.getenv("ENRICH_DRAIN_ENABLED", "true").lower() in ("true", "1", "yes")
         budget_seconds = int(os.getenv("ENRICH_DRAIN_BUDGET_SECONDS", "90"))
@@ -831,7 +831,7 @@ class PNCPIngestJob:
 
     def run_new_batch_enrichment(self, pncp_ids: List[str]) -> Dict[str, Any]:
         """Phase B2: Immediately enrich itens+arquivos for newly ingested/updated IDs."""
-        from enrichment_utils import enrich_single_itens, enrich_single_arquivos
+        from app.services.enrichment.utils import enrich_single_itens, enrich_single_arquivos
 
         enabled = os.getenv("ENRICH_NEW_ENABLED", "true").lower() in ("true", "1", "yes")
         budget = int(os.getenv("ENRICH_NEW_BUDGET_SECONDS", "30"))

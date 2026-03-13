@@ -1,18 +1,9 @@
-import os
 import psycopg
 from psycopg_pool import ConnectionPool
 from contextlib import contextmanager
 from typing import Generator
 from psycopg.rows import dict_row
-
-# We use the DATABASE_URL environment variable containing the standard connection string
-# Examples: 
-#   postgresql://postgres:postgres@localhost:5432/pncp
-# Fallback local connection for early dev if env is not set
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL", 
-    "postgresql://postgres:postgres@localhost:5432/pncp"
-)
+from .base import DATABASE_URL
 
 # Global connection pools
 _request_pool = None

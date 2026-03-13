@@ -2,11 +2,6 @@
 # Preserves the Scheduler running in background
 
 $ProjectRoot = Get-Location
-if (Test-Path "$ProjectRoot\.venv\Scripts\python.exe") {
-    $PythonExe = "$ProjectRoot\.venv\Scripts\python.exe"
-} else {
-    $PythonExe = (Get-Command python).Source
-}
 
 Write-Host "====================================================" -ForegroundColor Cyan
 Write-Host "   PNCP SERVICE RESTART (Keep Automation)" -ForegroundColor Cyan
@@ -32,7 +27,7 @@ function Kill-Port ($port) {
 }
 
 Write-Host "[1/4] Restarting Backend & Database (Docker)..." -ForegroundColor Yellow
-docker-compose restart
+docker-compose -f "$ProjectRoot\infra\compose\docker-compose.yml" restart
 
 Write-Host "[2/4] Stopping Frontend (3000)..."
 Kill-Port 3000

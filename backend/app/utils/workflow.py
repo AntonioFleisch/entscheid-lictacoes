@@ -4,7 +4,7 @@ import uuid
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, List
-from models import WorkflowStatus
+from app.db.models import WorkflowStatus
 
 BASE_DIR = Path(__file__).resolve().parent
 WORKFLOW_FILE = BASE_DIR / "workflow.json"

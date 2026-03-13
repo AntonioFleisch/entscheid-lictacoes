@@ -16,11 +16,12 @@ from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Add project root to sys.path so we can import backend logic directly
+# Add backend to sys.path so we can import app package
 root_dir = Path(__file__).parent.parent.absolute()
-sys.path.append(str(root_dir))
+backend_dir = root_dir / "backend"
+sys.path.append(str(backend_dir))
 
-from pncp_ingest_job import PNCPIngestJob
+from app.jobs.pncp_ingest import PNCPIngestJob
 
 # Load Env
 load_dotenv()

@@ -5,8 +5,8 @@ import random
 import os
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
-from database import get_db_connection
-from pncp_client import PNCPClient
+from app.db.session import get_db_connection
+from app.services.pncp.client import PNCPClient
 
 logger = logging.getLogger(__name__)
 
@@ -424,7 +424,7 @@ def run_arquivos_backfill(
     """
     import sqlite3
     import time
-    from database import get_db_connection
+    from app.db.session import get_db_connection
 
     start_time_total = time.time()
 
@@ -665,7 +665,7 @@ def run_itens_backfill(
     Robust items backfill logic with strict audit, locking, and time budgeting.
     """
     import time
-    from database import get_db_connection
+    from app.db.session import get_db_connection
     
     start_time_total = time.time()
     actual_limit = max_records if max_records != 1 else limit
@@ -941,7 +941,7 @@ def enrich_single_itens(pncp_id: str, per_record_timeout_seconds: float = 12.0, 
     Returns: {pncp_id, status, count, completed, error?, duration_ms}
     """
     import sqlite3 as _sqlite3
-    from database import get_db_connection as _get_db_connection
+    from app.db.session import get_db_connection as _get_db_connection
 
     start_t = time.time()
     conn = _get_db_connection()
@@ -1053,7 +1053,7 @@ def enrich_single_arquivos(pncp_id: str, per_record_timeout_seconds: float = 12.
     Returns: {pncp_id, status, count, completed, error?, duration_ms}
     """
     import sqlite3 as _sqlite3
-    from database import get_db_connection as _get_db_connection
+    from app.db.session import get_db_connection as _get_db_connection
 
     start_t = time.time()
     conn = _get_db_connection()

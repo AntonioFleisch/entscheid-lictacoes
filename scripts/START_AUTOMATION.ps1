@@ -16,7 +16,7 @@ Write-Host "====================================================" -ForegroundCol
 
 # 1. Start Backend & Database (Docker)
 Write-Host "[1/3] Starting Backend & Database (Docker)..." -ForegroundColor Yellow
-$DockerCmd = "docker-compose up -d"
+$DockerCmd = "docker-compose -f ""$ProjectRoot\infra\compose\docker-compose.yml"" up -d"
 Write-Host "Executing: $DockerCmd" -ForegroundColor Gray
 Invoke-Expression $DockerCmd
 

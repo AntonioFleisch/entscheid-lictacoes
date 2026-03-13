@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
-from auth_deps import get_db, require_system_admin
+from app.api.deps import get_db, require_system_admin
 
 router = APIRouter()
 

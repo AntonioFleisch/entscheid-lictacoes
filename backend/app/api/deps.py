@@ -2,8 +2,8 @@ import psycopg
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordBearer
 from typing import Optional
-import auth_security
-from database import get_db
+from app.core import security as auth_security
+from app.db.session import get_db
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 

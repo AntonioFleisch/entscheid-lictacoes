@@ -17,10 +17,12 @@ services:
       - pncp-network
 
   backend:
-    build: .
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
     container_name: pncp-backend
     env_file:
-      - .env
+      - ../../backend/.env
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/pncp
     ports:
