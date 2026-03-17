@@ -21,11 +21,10 @@ logger.addHandler(handler)
 # Constants
 PNCP_BASE_URL = "https://pncp.gov.br/api/consulta/v1"
 PNCP_ITEM_BASE = "https://pncp.gov.br/api/pncp/v1"
-DB_PATH = "pncp.db"
+
 
 class PNCPIngestJob:
-    def __init__(self, db_path: str = DB_PATH):
-        self.db_path = db_path
+    def __init__(self):
         self._init_db()
 
     def _init_db(self):
@@ -56,7 +55,7 @@ class PNCPIngestJob:
             conn.close()
 
     def _get_conn(self):
-        """Get a hardened SQLite connection."""
+        """Get a PostgreSQL connection from the pool."""
         conn = get_db_connection()
         
         return conn

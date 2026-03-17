@@ -422,7 +422,6 @@ def run_arquivos_backfill(
     """
     Robust arquivos backfill logic with strict audit, locking, and time budgeting.
     """
-    import sqlite3
     import time
     from app.db.session import get_db_connection
 
@@ -432,7 +431,6 @@ def run_arquivos_backfill(
         logger.info(f"run_arquivos_backfill start | dry_run={dry_run} | pncp_id={pncp_id} | limit={limit} | budget_seconds={budget_seconds}")
 
     conn = get_db_connection()
-    conn.row_factory = sqlite3.Row
     c = conn.cursor()
 
     try:
@@ -674,7 +672,6 @@ def run_itens_backfill(
         logger.info(f"run_itens_backfill start | dry_run={dry_run} | pncp_id={pncp_id} | limit={actual_limit} | budget_seconds={budget_seconds}")
 
     conn = get_db_connection()
-    conn.row_factory = sqlite3.Row
     c = conn.cursor()
     
     try:
@@ -814,14 +811,14 @@ def run_itens_backfill(
             res = conn.execute("""
                 UPDATE contratacoes
                 SET itens_status = 'FETCHING',
-                    itens_lock_owner = ?,
-                    itens_lock_until = datetime('now', '+5 minutes'),
+                    itens_lock_owner = %s,
+                    itens_lock_until = CURRENT_TIMESTAMP + interval '5 minutes',
                     itens_attempts = itens_attempts + 1,
-                    itens_last_fetch_at = datetime('now'),
-                    itens_updated_at = datetime('now')
-                WHERE pncp_id = ?
-                  AND (itens_status IN ('NOT_FETCHED', 'FAILED_TEMP') OR (itens_status = 'FETCHING' AND itens_lock_until <= datetime('now')))
-                  AND (itens_lock_until IS NULL OR itens_lock_until <= datetime('now'))
+                    itens_last_fetch_at = CURRENT_TIMESTAMP,
+                    itens_updated_at = CURRENT_TIMESTAMP
+                WHERE pncp_id = %s
+                  AND (itens_status IN ('NOT_FETCHED', 'FAILED_TEMP') OR (itens_status = 'FETCHING' AND itens_lock_until <= CURRENT_TIMESTAMP))
+                  AND (itens_lock_until IS NULL OR itens_lock_until <= CURRENT_TIMESTAMP)
             """, (worker_id, pid))
             conn.commit()
             
@@ -940,16 +937,14 @@ def enrich_single_itens(pncp_id: str, per_record_timeout_seconds: float = 12.0, 
     Uses the same locking, HTTP client, persistence and status logic as the batch.
     Returns: {pncp_id, status, count, completed, error?, duration_ms}
     """
-    import sqlite3 as _sqlite3
     from app.db.session import get_db_connection as _get_db_connection
 
     start_t = time.time()
     conn = _get_db_connection()
-    conn.row_factory = _sqlite3.Row
 
     try:
         row = conn.execute(
-            "SELECT pncp_id, orgao_cnpj, ano, sequencial, itens_status, itens_lock_until FROM contratacoes WHERE pncp_id=?",
+            "SELECT pncp_id, orgao_cnpj, ano, sequencial, itens_status, itens_lock_until FROM contratacoes WHERE pncp_id=%s",
             (pncp_id,)
         ).fetchone()
 
@@ -965,15 +960,15 @@ def enrich_single_itens(pncp_id: str, per_record_timeout_seconds: float = 12.0, 
         res_lock = conn.execute("""
             UPDATE contratacoes
             SET itens_status = 'FETCHING',
-                itens_lock_owner = ?,
-                itens_lock_until = datetime('now', '+5 minutes'),
+                itens_lock_owner = %s,
+                itens_lock_until = CURRENT_TIMESTAMP + interval '5 minutes',
                 itens_attempts = itens_attempts + 1,
-                itens_last_fetch_at = datetime('now'),
-                itens_updated_at = datetime('now')
-            WHERE pncp_id = ?
+                itens_last_fetch_at = CURRENT_TIMESTAMP,
+                itens_updated_at = CURRENT_TIMESTAMP
+            WHERE pncp_id = %s
               AND (COALESCE(itens_status,'NOT_FETCHED') IN ('NOT_FETCHED','FAILED_TEMP')
-                   OR (itens_status='FETCHING' AND itens_lock_until <= datetime('now')))
-              AND (itens_lock_until IS NULL OR itens_lock_until <= datetime('now'))
+                   OR (itens_status='FETCHING' AND itens_lock_until <= CURRENT_TIMESTAMP))
+              AND (itens_lock_until IS NULL OR itens_lock_until <= CURRENT_TIMESTAMP)
         """, (worker_id, pncp_id))
         conn.commit()
 
@@ -1005,7 +1000,7 @@ def enrich_single_itens(pncp_id: str, per_record_timeout_seconds: float = 12.0, 
 
             conn.execute("""
                 INSERT INTO pncp_request_log (pncp_id, endpoint, url, status_code, duration_ms, error)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
             """, (pncp_id, "get_items", fetch_url, status_code, duration_ms, error_msg))
             conn.commit()
 
@@ -1017,19 +1012,19 @@ def enrich_single_itens(pncp_id: str, per_record_timeout_seconds: float = 12.0, 
                 return {"pncp_id": pncp_id, "status": "COMPLETED", "count": len(raw_items),
                         "completed": True, "duration_ms": duration_ms}
             elif final_status == "FAILED_AUTH":
-                conn.execute("UPDATE contratacoes SET itens_status='FAILED_AUTH', itens_lock_owner=NULL, itens_lock_until=NULL WHERE pncp_id=?", (pncp_id,))
+                conn.execute("UPDATE contratacoes SET itens_status='FAILED_AUTH', itens_lock_owner=NULL, itens_lock_until=NULL WHERE pncp_id=%s", (pncp_id,))
                 conn.commit()
                 return {"pncp_id": pncp_id, "status": "FAILED_AUTH", "completed": False, "duration_ms": duration_ms}
             elif final_status == "NOT_AVAILABLE":
-                conn.execute("UPDATE contratacoes SET itens_status='NOT_AVAILABLE', itens_lock_owner=NULL, itens_lock_until=NULL WHERE pncp_id=?", (pncp_id,))
+                conn.execute("UPDATE contratacoes SET itens_status='NOT_AVAILABLE', itens_lock_owner=NULL, itens_lock_until=NULL WHERE pncp_id=%s", (pncp_id,))
                 conn.commit()
                 return {"pncp_id": pncp_id, "status": "NOT_AVAILABLE", "completed": False, "duration_ms": duration_ms}
             else:
                 conn.execute("""
                     UPDATE contratacoes SET itens_status='FAILED_TEMP',
-                        itens_next_retry_at=datetime('now','+15 minutes'),
-                        itens_lock_owner=NULL, itens_lock_until=NULL, itens_last_error=?
-                    WHERE pncp_id=?
+                        itens_next_retry_at=CURRENT_TIMESTAMP + interval '15 minutes',
+                        itens_lock_owner=NULL, itens_lock_until=NULL, itens_last_error=%s
+                    WHERE pncp_id=%s
                 """, (error_msg or f"Status {status_code}", pncp_id))
                 conn.commit()
                 return {"pncp_id": pncp_id, "status": "FAILED_TEMP", "completed": False,
@@ -1037,7 +1032,7 @@ def enrich_single_itens(pncp_id: str, per_record_timeout_seconds: float = 12.0, 
 
         except Exception as e:
             logger.error(f"enrich_single_itens error for {pncp_id}: {e}")
-            conn.execute("UPDATE contratacoes SET itens_status='FAILED', itens_last_error=?, itens_lock_owner=NULL, itens_lock_until=NULL WHERE pncp_id=?",
+            conn.execute("UPDATE contratacoes SET itens_status='FAILED', itens_last_error=%s, itens_lock_owner=NULL, itens_lock_until=NULL WHERE pncp_id=%s",
                          (str(e), pncp_id))
             conn.commit()
             return {"pncp_id": pncp_id, "status": "FAILED", "completed": False,
@@ -1052,16 +1047,14 @@ def enrich_single_arquivos(pncp_id: str, per_record_timeout_seconds: float = 12.
     Uses the same locking, HTTP client, persistence and status logic as the batch.
     Returns: {pncp_id, status, count, completed, error?, duration_ms}
     """
-    import sqlite3 as _sqlite3
     from app.db.session import get_db_connection as _get_db_connection
 
     start_t = time.time()
     conn = _get_db_connection()
-    conn.row_factory = _sqlite3.Row
 
     try:
         row = conn.execute(
-            "SELECT pncp_id, orgao_cnpj, ano, sequencial, arquivos_status, arquivos_lock_until FROM contratacoes WHERE pncp_id=?",
+            "SELECT pncp_id, orgao_cnpj, ano, sequencial, arquivos_status, arquivos_lock_until FROM contratacoes WHERE pncp_id=%s",
             (pncp_id,)
         ).fetchone()
 
@@ -1076,15 +1069,15 @@ def enrich_single_arquivos(pncp_id: str, per_record_timeout_seconds: float = 12.
         res_lock = conn.execute("""
             UPDATE contratacoes
             SET arquivos_status = 'FETCHING',
-                arquivos_lock_owner = ?,
-                arquivos_lock_until = datetime('now', '+5 minutes'),
+                arquivos_lock_owner = %s,
+                arquivos_lock_until = CURRENT_TIMESTAMP + interval '5 minutes',
                 arquivos_attempts = COALESCE(arquivos_attempts, 0) + 1,
-                arquivos_last_fetch_at = datetime('now'),
-                arquivos_updated_at = datetime('now')
-            WHERE pncp_id = ?
+                arquivos_last_fetch_at = CURRENT_TIMESTAMP,
+                arquivos_updated_at = CURRENT_TIMESTAMP
+            WHERE pncp_id = %s
               AND (COALESCE(arquivos_status,'NOT_FETCHED') IN ('NOT_FETCHED','FAILED_TEMP')
-                   OR (arquivos_status='FETCHING' AND arquivos_lock_until <= datetime('now')))
-              AND (arquivos_lock_until IS NULL OR arquivos_lock_until <= datetime('now'))
+                   OR (arquivos_status='FETCHING' AND arquivos_lock_until <= CURRENT_TIMESTAMP))
+              AND (arquivos_lock_until IS NULL OR arquivos_lock_until <= CURRENT_TIMESTAMP)
         """, (worker_id, pncp_id))
         conn.commit()
 
@@ -1114,7 +1107,7 @@ def enrich_single_arquivos(pncp_id: str, per_record_timeout_seconds: float = 12.
 
             conn.execute("""
                 INSERT INTO pncp_request_log (pncp_id, endpoint, url, status_code, duration_ms, error)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
             """, (pncp_id, "get_arquivos", fetch_url, status_code, duration_ms, error_msg))
             conn.commit()
 
@@ -1126,19 +1119,19 @@ def enrich_single_arquivos(pncp_id: str, per_record_timeout_seconds: float = 12.
                 return {"pncp_id": pncp_id, "status": "COMPLETED", "count": len(raw_files),
                         "completed": True, "duration_ms": duration_ms}
             elif final_status == "FAILED_AUTH":
-                conn.execute("UPDATE contratacoes SET arquivos_status='FAILED_AUTH', arquivos_lock_owner=NULL, arquivos_lock_until=NULL WHERE pncp_id=?", (pncp_id,))
+                conn.execute("UPDATE contratacoes SET arquivos_status='FAILED_AUTH', arquivos_lock_owner=NULL, arquivos_lock_until=NULL WHERE pncp_id=%s", (pncp_id,))
                 conn.commit()
                 return {"pncp_id": pncp_id, "status": "FAILED_AUTH", "completed": False, "duration_ms": duration_ms}
             elif final_status == "NOT_AVAILABLE":
-                conn.execute("UPDATE contratacoes SET arquivos_status='NOT_AVAILABLE', arquivos_lock_owner=NULL, arquivos_lock_until=NULL WHERE pncp_id=?", (pncp_id,))
+                conn.execute("UPDATE contratacoes SET arquivos_status='NOT_AVAILABLE', arquivos_lock_owner=NULL, arquivos_lock_until=NULL WHERE pncp_id=%s", (pncp_id,))
                 conn.commit()
                 return {"pncp_id": pncp_id, "status": "NOT_AVAILABLE", "completed": False, "duration_ms": duration_ms}
             else:
                 conn.execute("""
                     UPDATE contratacoes SET arquivos_status='FAILED_TEMP',
-                        arquivos_next_retry_at=datetime('now','+15 minutes'),
-                        arquivos_lock_owner=NULL, arquivos_lock_until=NULL, arquivos_last_error=?
-                    WHERE pncp_id=?
+                        arquivos_next_retry_at=CURRENT_TIMESTAMP + interval '15 minutes',
+                        arquivos_lock_owner=NULL, arquivos_lock_until=NULL, arquivos_last_error=%s
+                    WHERE pncp_id=%s
                 """, (error_msg or f"Status {status_code}", pncp_id))
                 conn.commit()
                 return {"pncp_id": pncp_id, "status": "FAILED_TEMP", "completed": False,
@@ -1146,7 +1139,7 @@ def enrich_single_arquivos(pncp_id: str, per_record_timeout_seconds: float = 12.
 
         except Exception as e:
             logger.error(f"enrich_single_arquivos error for {pncp_id}: {e}")
-            conn.execute("UPDATE contratacoes SET arquivos_status='FAILED', arquivos_last_error=?, arquivos_lock_owner=NULL, arquivos_lock_until=NULL WHERE pncp_id=?",
+            conn.execute("UPDATE contratacoes SET arquivos_status='FAILED', arquivos_last_error=%s, arquivos_lock_owner=NULL, arquivos_lock_until=NULL WHERE pncp_id=%s",
                          (str(e), pncp_id))
             conn.commit()
             return {"pncp_id": pncp_id, "status": "FAILED", "completed": False,

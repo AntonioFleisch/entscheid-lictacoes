@@ -34,11 +34,8 @@ def get_admin_api_key():
 N8N_SERVICE_EMAIL = "n8n@local"
 
 # 0. App initialization & immediate CORS
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://0.0.0.0:3000"
-]
+_cors_env = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
 
 app = FastAPI()
 
@@ -58,6 +55,11 @@ from fastapi import Response, Request
 @app.options("/{full_path:path}")
 async def preflight_handler(full_path: str, request: Request):
     return Response(status_code=204)
+
+@app.get("/health")
+def root_health_check():
+    """Render healthcheck endpoint — must not depend on DB."""
+    return {"status": "ok"}
 
 @app.get("/api/health")
 def api_health_check():
@@ -207,7 +209,7 @@ async def admin_backfill_segment_unclassified(user = Depends(verify_admin_api_ke
     """
     Backfill NULL or empty segments to 'unclassified'.
     """
-    import pncp_utils
+    from app.services.pncp import utils as pncp_utils
     conn = pncp_utils.get_db_connection()
     c = conn.cursor()
     
@@ -234,7 +236,7 @@ async def admin_debug_segments_audit(user = Depends(verify_admin_api_key)): # Us
     Audit segment consistency using the same universe logic.
     Returns total_default (classified), total_unclassified, total_all, and per-segment breakdown.
     """
-    import pncp_utils
+    from app.services.pncp import utils as pncp_utils
     conn = pncp_utils.get_db_connection()
     c = conn.cursor()
     
@@ -300,7 +302,6 @@ async def admin_backfill_arquivos(
         logger.info(f"backfill-arquivos start | dry_run={dry_run} | pncp_id={pncp_id} | limit={limit}")
 
     conn = pncp_utils.get_db_connection()
-    conn.row_factory = sqlite3.Row
     c = conn.cursor()
 
     try:
@@ -579,7 +580,7 @@ async def admin_backfill_itens(
     When pncp_id is given: returns pre-lock state and lock failure reason.
     Auto-recovers FETCHING records with expired locks.
     """
-    import enrichment_utils
+    from app.services.enrichment import utils as enrichment_utils
     actual_limit = max_records if max_records != 1 else limit
     return enrichment_utils.run_itens_backfill(
         limit=actual_limit,
@@ -665,9 +666,7 @@ async def admin_force_unlock_itens(
     user = Depends(verify_admin_api_key)
 ):
     """Force-unlock a stuck record's itens enrichment lock."""
-    import sqlite3
     conn = pncp_utils.get_db_connection()
-    conn.row_factory = sqlite3.Row
     try:
         # Read current state
         row = conn.execute("""
@@ -721,9 +720,7 @@ async def admin_itens_debug(
     user = Depends(verify_admin_api_key)
 ):
     """Debug endpoint: returns control fields and recent request logs for a pncp_id."""
-    import sqlite3
     conn = pncp_utils.get_db_connection()
-    conn.row_factory = sqlite3.Row
     try:
         row = conn.execute("""
             SELECT pncp_id, itens_status, itens_count, itens_lock_until, itens_lock_owner,
@@ -757,9 +754,7 @@ async def admin_debug_itens_state(
     user = Depends(verify_admin_api_key)
 ):
     """Dual state debug: returns state from contratacoes and licitacoes view."""
-    import sqlite3
     conn = pncp_utils.get_db_connection()
-    conn.row_factory = sqlite3.Row
     try:
         # 1. Select from contratacoes
         res_contratacoes = conn.execute("""
@@ -784,7 +779,7 @@ async def admin_debug_itens_state(
 @app.post("/api/admin/reset-itens")
 async def admin_reset_itens(pncp_id: str, force: bool = False, user = Depends(verify_admin_api_key)):
     """Reset items enrichment status for a record."""
-    import pncp_utils
+    from app.services.pncp import utils as pncp_utils
     conn = pncp_utils.get_db_connection()
     c = conn.cursor()
     
@@ -845,7 +840,7 @@ async def admin_reset_arquivos(pncp_id: str, force: bool = False, user = Depends
 
 @app.get("/api/licitacoes/modalidades")
 async def get_modalidades(ws_context: dict = Depends(auth_deps.get_current_workspace)):
-    import pncp_utils
+    from app.services.pncp import utils as pncp_utils
     return pncp_utils.get_modalidades_info(workspace_id=ws_context["workspace_id"])
 
 @app.get("/api/licitacoes/sidebar-counts")
@@ -868,7 +863,7 @@ async def get_sidebar_counts(
     Returns counts for sidebar segments + ignored items.
     Respects common filters (q, valor, dates, capag, uf, modalidades).
     """
-    import pncp_utils
+    from app.services.pncp import utils as pncp_utils
     mods_list = [m.strip() for m in modalidades.split(",")] if modalidades else None
     seg_list = [s.strip() for s in segmento.split(",")] if segmento else None
     
@@ -913,7 +908,7 @@ async def list_licitacoes(
     List licitacoes with server-side filtering and pagination.
     Default scope gate: when segmento is not provided, only classified items are shown.
     """
-    import pncp_utils
+    from app.services.pncp import utils as pncp_utils
     import logging
     _logger = logging.getLogger("api_logger")
 
@@ -1027,7 +1022,7 @@ async def get_licitacao_itens(pncp_id: str, user = Depends(auth_deps.get_current
     Public Items Endpoint (Part F).
     Returns full items list only if COMPLETED.
     """
-    import pncp_utils
+    from app.services.pncp import utils as pncp_utils
     conn = pncp_utils.get_db_connection()
     c = conn.cursor()
     
@@ -1252,7 +1247,7 @@ async def enrich_capag(limit: int = 50, user = Depends(verify_admin_api_key)):
     Enrich orgaos with CAPAG data. (Disabled / Obsolete)
     Still maps orgaos to contratacoes.
     """
-    import pncp_utils
+    from app.services.pncp import utils as pncp_utils
     
     conn = pncp_utils.get_db_connection()
     c = conn.cursor()
@@ -1442,7 +1437,7 @@ async def job_pncp_reclassify(
     Manually trigger re-classification of all biddings using v3 logic.
     """
     from app.services.segmentation.classifier import finalize_contract_segment
-    import pncp_utils
+    from app.services.pncp import utils as pncp_utils
     from datetime import datetime
     
     conn = pncp_utils.get_db_connection()
@@ -1600,7 +1595,7 @@ async def get_licitacoes_counters(ws_context: dict = Depends(auth_deps.get_curre
     Uses single optimized SQL query.
     Returns generated_at and anti-cache headers.
     """
-    import sqlite3
+
     from datetime import datetime
     
     ws_id = ws_context["workspace_id"]
@@ -1682,7 +1677,7 @@ def get_db_duplicates():
     """
     Diagnostic endpoint to find duplicate records in the database.
     """
-    import pncp_utils
+    from app.services.pncp import utils as pncp_utils
     conn = pncp_utils.get_db_connection()
     c = conn.cursor()
     
@@ -1731,15 +1726,13 @@ async def backfill_deadlines(
     Administrative endpoint to backfill deadline_at for records missing it.
     Rate-limited and with retry logic for robustness.
     """
-    import sqlite3
     import time
     import requests
     from datetime import datetime
     
     start_time = time.time()
     
-    conn = sqlite3.connect('pncp.db')
-    conn.row_factory = sqlite3.Row
+    conn = pncp_utils.get_db_connection()
     c = conn.cursor()
     
     # Select records needing backfill
@@ -1872,13 +1865,11 @@ async def backfill_valores(limit: int = 500, dry_run: bool = False):
     Scans for corrupted or missing values and repairs them from payloads.
     Corrupted values are typically date strings containing 'T'.
     """
-    import sqlite3
     import time
     from app.services.pncp.utils import normalize_valor_estimado_centavos
     
     start_time = time.time()
-    conn = sqlite3.connect('pncp.db')
-    conn.row_factory = sqlite3.Row
+    conn = pncp_utils.get_db_connection()
     c = conn.cursor()
     
     # 1. Identify candidates:
@@ -1888,7 +1879,7 @@ async def backfill_valores(limit: int = 500, dry_run: bool = False):
     sql = """
     SELECT pncp_id, valor_estimado_centavos, payload_publicacao_json, payload_detalhe_json
     FROM contratacoes
-    WHERE (valor_estimado_centavos IS NULL OR valor_estimado_centavos = 0 OR valor_estimado_centavos LIKE '%T%' OR typeof(valor_estimado_centavos) = 'text')
+    WHERE (valor_estimado_centavos IS NULL OR valor_estimado_centavos = 0 OR CAST(valor_estimado_centavos AS TEXT) LIKE '%%T%%')
     LIMIT %s
     """
     rows = c.execute(sql, (limit,)).fetchall()
@@ -1949,7 +1940,7 @@ async def admin_backfill_itens_from_payload(
     from app.services.enrichment.utils import extract_items_from_payload, persist_items
     from app.db.session import get_db_connection
     import time
-    import sqlite3
+
     
     start_time = time.time()
     stats = {
