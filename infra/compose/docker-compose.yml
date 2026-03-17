@@ -24,8 +24,7 @@ services:
     env_file:
       - ../../backend/.env
     environment:
-      - ENV=development
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/pncp}
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/pncp
     ports:
       - "8000:8000"
     depends_on:
