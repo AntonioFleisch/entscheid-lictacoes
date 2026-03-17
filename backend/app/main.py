@@ -12,7 +12,8 @@ from dotenv import load_dotenv
 
 # Internal imports
 from app.db.models import WorkflowItemCreate, WorkflowItemUpdate, WorkflowItemResponse, IngestAction, WorkflowStatus, PNCPBatch, PaginatedResponse, PaginatedRuns
-from app.utils import workflow_utils, idempotency_utils
+import app.utils.workflow_utils as workflow_utils
+import app.utils.idempotency_utils as idempotency_utils
 from app.services.pncp import utils as pncp_utils
 from app.core import middleware
 from app.api import deps as auth_deps
